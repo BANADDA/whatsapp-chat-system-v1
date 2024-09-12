@@ -4,7 +4,6 @@ const axios = require('axios');
 const http = require('http');
 const socketIO = require('socket.io');
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
 require('dotenv').config();
 
 // Initialize Firebase Admin SDK
