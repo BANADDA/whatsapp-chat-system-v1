@@ -120,39 +120,78 @@ app.get('/messages', async (req, res) => {
 // Webhook endpoint for WhatsApp messages
 const messages = []; // Temporary storage, consider using a database
 
-app.post('/whatsapp-webhook', async (req, res) => {
-    const incomingMessage = req.body;
+app.post('/webhook', async (req, res) => {
+    console.log("Incoming request body:", JSON.stringify(req.body, null, 2));  // Log the entire incoming request body for debugging
 
-    // Make sure we have a message
-    if (incomingMessage && incomingMessage.messages) {
-        // Parse the message details
-        const from = incomingMessage.messages[0].from;  // The user's phone number
-        const message = incomingMessage.messages[0].text.body;  // The message content
-        const timestamp = incomingMessage.messages[0].timestamp;
+    try {
+        // Check if the message structure is correct
+        if (req.body && req.body.entry && req.body.entry[0].changes && req.body.entry[0].changes[0].value.messages && req.body.entry[0].changes[0].value.messages[0]) {
+            // Extract relevant data
+            const from = req.body.entry[0].changes[0].value.messages[0].from;  // Sender's phone number (WhatsApp ID)
+            const message = req.body.entry[0].changes[0].value.messages[0].text.body;  // Message content
+            const timestamp = req.body.entry[0].changes[0].value.messages[0].timestamp;
 
-        // Log the incoming message to verify the data
-        console.log(`Message from ${from}: ${message}`);
+            // Log extracted data to confirm it's parsed correctly
+            console.log(`Message from: ${from}, Content: ${message}, Timestamp: ${timestamp}`);
 
-        // Store the message in Firebase
-        try {
-            const db = admin.firestore();
-            await db.collection('messages').doc(from).collection('chat').add({
+            // Generate a unique message ID (this can be done using a UUID or Firestore's auto-generated ID)
+            const messageId = req.body.entry[0].changes[0].value.messages[0].id || db.collection('messages').doc(from).collection('chat').doc().id;
+
+            // Store the incoming message in Firestore (under the user's phone number as a document)
+            const chatRef = db.collection('messages').doc(from).collection('chat').doc(messageId);
+            await chatRef.set({
                 from: from,
                 message: message,
                 timestamp: new Date(parseInt(timestamp) * 1000) // Convert from Unix timestamp
             });
-            console.log("Message stored in Firebase");
-        } catch (error) {
-            console.error("Error saving message to Firebase:", error);
-        }
 
-        // Send a 200 response to WhatsApp API
-        res.sendStatus(200);
-    } else {
-        console.error("No message found in webhook payload");
-        res.sendStatus(400); // Bad request
+            console.log("Incoming message successfully stored in Firestore");
+
+            // Respond with a 200 status to acknowledge receipt of the message
+            res.sendStatus(200);
+        } else {
+            console.error('Invalid request format:', JSON.stringify(req.body, null, 2));  // Log if the format is invalid
+            res.status(400).send('Invalid request format');
+        }
+    } catch (error) {
+        console.error('Error processing request:', error.message);  // Log the exact error message
+        res.status(500).send('Internal server error');
     }
 });
+
+// app.post('/whatsapp-webhook', async (req, res) => {
+//     const incomingMessage = req.body;
+
+//     // Make sure we have a message
+//     if (incomingMessage && incomingMessage.messages) {
+//         // Parse the message details
+//         const from = incomingMessage.messages[0].from;  // The user's phone number
+//         const message = incomingMessage.messages[0].text.body;  // The message content
+//         const timestamp = incomingMessage.messages[0].timestamp;
+
+//         // Log the incoming message to verify the data
+//         console.log(`Message from ${from}: ${message}`);
+
+//         // Store the message in Firebase
+//         try {
+//             const db = admin.firestore();
+//             await db.collection('messages').doc(from).collection('chat').add({
+//                 from: from,
+//                 message: message,
+//                 timestamp: new Date(parseInt(timestamp) * 1000) // Convert from Unix timestamp
+//             });
+//             console.log("Message stored in Firebase");
+//         } catch (error) {
+//             console.error("Error saving message to Firebase:", error);
+//         }
+
+//         // Send a 200 response to WhatsApp API
+//         res.sendStatus(200);
+//     } else {
+//         console.error("No message found in webhook payload");
+//         res.sendStatus(400); // Bad request
+//     }
+// });
 
 io.on('connection', (socket) => {
     console.log('Client connected');
