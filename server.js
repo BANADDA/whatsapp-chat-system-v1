@@ -202,12 +202,14 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
 
     axios.post(whatsappApiUrl, {
         messaging_product: "whatsapp",
-        to: recipientNumber, // The customer's phone number
-        type: "text",
-        text: { body: message }, // The message to be sent
+        to: recipientNumber,  // The recipient's phone number
+        type: "text",  // Changed to "text" for custom messages
+        text: {
+            body: message  // The custom message body
+        }
     }, {
         headers: {
-            Authorization: `Bearer ${accessToken}`, // WhatsApp access token
+            Authorization: `Bearer EAAHikUfOVZBsBOxDJPX6KsmhDvRPKH0JxexXiKeV9JXe2hTojjBzF4K1JZAUELzdfczqaGuBolgXHJM3V2lODFdxXT65v0h2mD471CrqJwRlNsULGMlpejO9ntJ1SPXYtFYUunHSGLxL749IpcQZBBJSoE0AnZAlI7RssxnsfWnvHfFoeV83D03daa6O11ZAOedVFxIQMmq05ewN98xmVJrMcLKyHnZBcGOnoZD`,
             'Content-Type': 'application/json'
         }
     }).then((response) => {
@@ -216,6 +218,27 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
         console.error('Error sending WhatsApp message:', error.response ? error.response.data : error.message);
     });
 };
+
+// const sendWhatsAppMessage = (message, recipientNumber) => {
+//     const whatsappApiUrl = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`; 
+//     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
+//     axios.post(whatsappApiUrl, {
+//         messaging_product: "whatsapp",
+//         to: recipientNumber, // The customer's phone number
+//         type: "text",
+//         text: { body: message }, // The message to be sent
+//     }, {
+//         headers: {
+//             Authorization: `Bearer ${accessToken}`, // WhatsApp access token
+//             'Content-Type': 'application/json'
+//         }
+//     }).then((response) => {
+//         console.log('Message sent to WhatsApp:', response.data);
+//     }).catch((error) => {
+//         console.error('Error sending WhatsApp message:', error.response ? error.response.data : error.message);
+//     });
+// };
 
 // Handle agent message, send to WhatsApp and Firestore
 io.on('connection', (socket) => {
