@@ -68,28 +68,39 @@ app.post('/webhook', async (req, res) => {
     try {
         // Ensure the incoming request is in the expected format
         if (req.body && req.body.entry && req.body.entry[0].changes && req.body.entry[0].changes[0].value.messages && req.body.entry[0].changes[0].value.messages[0]) {
-            
-            // Extract relevant data
-            const from = req.body.entry[0].changes[0].value.messages[0].from;  // Sender's phone number
-            const message = req.body.entry[0].changes[0].value.messages[0].text.body;  // Message text
-            const timestamp = req.body.entry[0].changes[0].value.messages[0].timestamp;  // Unix timestamp
-            
+
+            // Extract the necessary data from the incoming request
+            const messageData = req.body.entry[0].changes[0].value;
+            const from = messageData.messages[0].from;  // Sender's phone number
+            const message = messageData.messages[0].text.body;  // Message text
+            const timestamp = messageData.messages[0].timestamp;  // Unix timestamp
+            const username = messageData.contacts[0].profile.name;  // User's name
+            const to = messageData.metadata.display_phone_number;  // Business phone number
+
             // Generate a unique message ID or use the one provided in the request
-            const messageId = req.body.entry[0].changes[0].value.messages[0].id || db.collection('messages').doc(from).collection('chat').doc().id;
+            const messageId = messageData.messages[0].id || db.collection('messages').doc(from).collection('chat').doc().id;
             
-            // Log the extracted message data
+            // Log the incoming message
             console.log(`Received message from ${from}: ${message}`);
-            
+
+            // Store the sender's phone number and name in Firestore (if not already present)
+            const userRef = db.collection('messages').doc(from);
+            await userRef.set({
+                username: username,
+                phone_number: from,
+            }, { merge: true });  // Merge to avoid overwriting existing fields
+
             // Define the reference to the 'chat' sub-collection under the user's phone number
-            const chatRef = db.collection('messages').doc(from).collection('chat').doc(messageId);
+            const chatRef = userRef.collection('chat').doc(messageId);
             
             // Store the message in Firestore
             await chatRef.set({
-                from: from,
+                from: from,  // Who sent the message
+                to: to,  // Who the message was sent to (your business)
                 message: message,
                 timestamp: new Date(parseInt(timestamp) * 1000)  // Convert Unix timestamp to JS Date
             });
-            
+
             console.log("Message successfully stored in Firestore");
 
             // Respond with a success status to acknowledge receipt of the message
