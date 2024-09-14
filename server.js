@@ -209,7 +209,7 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
         }
     }, {
         headers: {
-            Authorization: `Bearer EAAHikUfOVZBsBOxDJPX6KsmhDvRPKH0JxexXiKeV9JXe2hTojjBzF4K1JZAUELzdfczqaGuBolgXHJM3V2lODFdxXT65v0h2mD471CrqJwRlNsULGMlpejO9ntJ1SPXYtFYUunHSGLxL749IpcQZBBJSoE0AnZAlI7RssxnsfWnvHfFoeV83D03daa6O11ZAOedVFxIQMmq05ewN98xmVJrMcLKyHnZBcGOnoZD`,
+            Authorization: `Bearer EAAHikUfOVZBsBO6cBjDNZCleLbHvgao7BYkZAh8KWhL1kXdEx0DoMWgSZBbVg9NBWZAv3ZAm5wbZBdnZAg6d8G20gawAklZCz96AbSz4PmhZB817aLfbBh3PrHwA0s8FxoZADcGG0AlIjZC6vstNkzAtErGViocGCib4a6gtgiSwu0fWV2ttc4anjzDkE6oMZBp8be5O7yKMRciTkRnrhxcrgaby9vvLbOtdgv0OStOIZD`,
             'Content-Type': 'application/json'
         }
     }).then((response) => {
