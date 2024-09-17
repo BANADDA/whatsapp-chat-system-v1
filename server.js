@@ -1,3 +1,4 @@
+// Import necessary modules
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -5,6 +6,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 const admin = require('firebase-admin');
 require('dotenv').config();
+const cors = require('cors');
 
 // Initialize Firebase Admin SDK
 admin.initializeApp({
@@ -20,7 +22,7 @@ admin.initializeApp({
         auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_CERT,
         client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL
     }),
-    databaseURL: "https://your-firebase-project-id.firebaseio.com"
+    databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`
 });
 
 const db = admin.firestore();
@@ -28,167 +30,220 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
 
-const cors = require('cors');
-
 // Enable CORS for all routes
 app.use(cors());
-
 app.use(bodyParser.json());
 
-// Handle incoming WhatsApp webhook (simulate)
+// Verify WhatsApp webhook
 app.get('/webhook', (req, res) => {
-    const VERIFY_TOKEN = "whatsapp_verify_token_2024"; // Your verification token
+    const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    // Log incoming query parameters for debugging
-    console.log('Received GET request on /webhook');
-    console.log('Mode:', mode);
-    console.log('Token:', token);
-    console.log('Challenge:', challenge);
-
     if (mode && token) {
         if (mode === 'subscribe' && token === VERIFY_TOKEN) {
             console.log('WEBHOOK_VERIFIED');
-            res.status(200).send(challenge); // Respond with the challenge token
+            res.status(200).send(challenge);
         } else {
             console.log('Failed Verification. Invalid Token');
-            res.sendStatus(403); // Token didn't match, respond with 403 Forbidden
+            res.sendStatus(403);
         }
     } else {
-        console.log('Missing mode or token in the request');
-        res.sendStatus(400); // Missing necessary parameters, respond with 400 Bad Request
+        res.sendStatus(400);
     }
 });
 
+// Handle incoming WhatsApp messages
 app.post('/webhook', async (req, res) => {
-    console.log("Incoming request body:", JSON.stringify(req.body, null, 2));  // Log the incoming request body for debugging
+    console.log("Incoming request body:", JSON.stringify(req.body, null, 2));
 
     try {
-        // Ensure the incoming request is in the expected format
-        if (req.body && req.body.entry && req.body.entry[0].changes && req.body.entry[0].changes[0].value.messages && req.body.entry[0].changes[0].value.messages[0]) {
+        if (req.body && req.body.entry && req.body.entry[0].changes &&
+            req.body.entry[0].changes[0].value.messages && req.body.entry[0].changes[0].value.messages[0]) {
 
-            // Extract the necessary data from the incoming request
             const messageData = req.body.entry[0].changes[0].value;
-            const from = messageData.messages[0].from;  // Sender's phone number
-            const message = messageData.messages[0].text.body;  // Message text
-            const timestamp = messageData.messages[0].timestamp;  // Unix timestamp
-            const username = messageData.contacts[0].profile.name;  // User's name
-            const to = messageData.metadata.display_phone_number;  // Business phone number
+            const messageObj = messageData.messages[0];
+            const from = messageObj.from;  // Sender's WhatsApp ID (phone number)
+            const messageText = messageObj.text ? messageObj.text.body : '';
+            const timestamp = messageObj.timestamp;
+            const messageId = messageObj.id;
+            const userName = messageData.contacts[0].profile.name || 'Unknown';
+            const to = messageData.metadata.display_phone_number;  // Your business's phone number
+            const recipientId = to.replace(/\D/g, '');  // Normalize recipient phone number
 
-            // Generate a unique message ID or use the one provided in the request
-            const messageId = messageData.messages[0].id || db.collection('messages').doc(from).collection('chat').doc().id;
-            
-            // Log the incoming message
-            console.log(`Received message from ${from}: ${message}`);
-
-            // Store the sender's phone number and name in Firestore (if not already present)
-            const userRef = db.collection('messages').doc(from);
-            await userRef.set({
-                username: username,
+            // Ensure users exist in Users collection
+            // Sender
+            const senderRef = db.collection('Users').doc(from);
+            await senderRef.set({
+                user_id: from,
+                name: userName,
                 phone_number: from,
-            }, { merge: true });  // Merge to avoid overwriting existing fields
+                last_seen: new Date(parseInt(timestamp) * 1000),
+                is_active: true
+            }, { merge: true });
 
-            // Define the reference to the 'chat' sub-collection under the user's phone number
-            const chatRef = userRef.collection('chat').doc(messageId);
-            
-            // Store the message in Firestore
-            await chatRef.set({
-                from: from,  // Who sent the message
-                to: to,  // Who the message was sent to (your business)
-                message: message,
-                timestamp: new Date(parseInt(timestamp) * 1000)  // Convert Unix timestamp to JS Date
+            // Recipient (your business)
+            const recipientRef = db.collection('Users').doc(recipientId);
+            await recipientRef.set({
+                user_id: recipientId,
+                name: 'Your Business Name',
+                phone_number: recipientId,
+                is_active: true
+            }, { merge: true });
+
+            // Find existing conversation between sender and recipient, or create a new one
+            let conversationId = null;
+            const conversationsRef = db.collection('Conversations');
+            const conversationSnapshot = await conversationsRef
+                .where('participant_ids', 'array-contains', from)
+                .where('status', '==', 'active')
+                .get();
+
+            // Check if a conversation exists between these two users
+            let conversationExists = false;
+            conversationSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.participant_ids.includes(recipientId)) {
+                    conversationExists = true;
+                    conversationId = doc.id;
+                }
+            });
+
+            if (!conversationExists) {
+                // Create a new conversation
+                const newConversationRef = conversationsRef.doc();
+                await newConversationRef.set({
+                    conversation_id: newConversationRef.id,
+                    participant_ids: [from, recipientId],
+                    status: 'active',
+                    start_time: new Date(parseInt(timestamp) * 1000),
+                    last_message: {
+                        message_id: messageId,
+                        content: messageText
+                    }
+                });
+                conversationId = newConversationRef.id;
+            } else {
+                // Update last_message of the existing conversation
+                const conversationRef = conversationsRef.doc(conversationId);
+                await conversationRef.update({
+                    last_message: {
+                        message_id: messageId,
+                        content: messageText
+                    }
+                });
+            }
+
+            // Store the message in Messages collection
+            const messagesRef = db.collection('Messages').doc(messageId);
+            await messagesRef.set({
+                message_id: messageId,
+                conversation_id: conversationId,
+                sender_id: from,
+                timestamp: new Date(parseInt(timestamp) * 1000),
+                content: messageText,
+                message_type: 'text',
+                is_read: false
             });
 
             console.log("Message successfully stored in Firestore");
 
-            // Respond with a success status to acknowledge receipt of the message
+            // Emit the message to connected clients
+            io.emit('newMessage', {
+                conversation_id: conversationId,
+                sender_id: from,
+                content: messageText,
+                timestamp: new Date(parseInt(timestamp) * 1000)
+            });
+
+            // Respond with a success status
             res.sendStatus(200);
         } else {
-            // Log and return an error if the request is not in the expected format
             console.error('Invalid request format:', JSON.stringify(req.body, null, 2));
             res.status(400).send('Invalid request format');
         }
     } catch (error) {
-        // Handle and log any errors that occur during message processing
         console.error('Error processing request:', error.message);
         res.status(500).send('Internal server error');
     }
 });
 
-// Fetch all messages stored in Firestore
-app.get('/messages', async (req, res) => {
-    try {
-        const messagesSnapshot = await db.collection('messages').get();
-        const messages = [];
-        
-        messagesSnapshot.forEach(doc => {
-            messages.push(doc.data());
-        });
-
-        res.status(200).json(messages);
-    } catch (error) {
-        console.error("Error fetching messages:", error);
-        res.status(500).send("Error fetching messages");
-    }
-});
-
-// Webhook endpoint for WhatsApp messages
-const messages = []; // Temporary storage, consider using a database
-
-app.post('/webhook', async (req, res) => {
-    console.log("Incoming request body:", JSON.stringify(req.body, null, 2));  // Log the entire incoming request body for debugging
-
-    try {
-        // Check if the message structure is correct
-        if (req.body && req.body.entry && req.body.entry[0].changes && req.body.entry[0].changes[0].value.messages && req.body.entry[0].changes[0].value.messages[0]) {
-            // Extract relevant data
-            const from = req.body.entry[0].changes[0].value.messages[0].from;  // Sender's phone number (WhatsApp ID)
-            const message = req.body.entry[0].changes[0].value.messages[0].text.body;  // Message content
-            const timestamp = req.body.entry[0].changes[0].value.messages[0].timestamp;
-
-            // Log extracted data to confirm it's parsed correctly
-            console.log(`Message from: ${from}, Content: ${message}, Timestamp: ${timestamp}`);
-
-            // Generate a unique message ID (this can be done using a UUID or Firestore's auto-generated ID)
-            const messageId = req.body.entry[0].changes[0].value.messages[0].id || db.collection('messages').doc(from).collection('chat').doc().id;
-
-            // Store the incoming message in Firestore (under the user's phone number as a document)
-            const chatRef = db.collection('messages').doc(from).collection('chat').doc(messageId);
-            await chatRef.set({
-                from: from,
-                message: message,
-                timestamp: new Date(parseInt(timestamp) * 1000) // Convert from Unix timestamp
-            });
-
-            console.log("Incoming message successfully stored in Firestore");
-
-            // Respond with a 200 status to acknowledge receipt of the message
-            res.sendStatus(200);
-        } else {
-            console.error('Invalid request format:', JSON.stringify(req.body, null, 2));  // Log if the format is invalid
-            res.status(400).send('Invalid request format');
-        }
-    } catch (error) {
-        console.error('Error processing request:', error.message);  // Log the exact error message
-        res.status(500).send('Internal server error');
-    }
-});
-
-io.on('connection', (socket) => {
-    console.log('Client connected');
-    
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
-    });
-});
-
+// Send a message from the agent to the user
 app.post('/send-whatsapp-message', async (req, res) => {
     const { message, recipientNumber } = req.body;
 
     try {
-        await sendWhatsAppMessage(message, recipientNumber); // Call your sendWhatsAppMessage function
+        // Send message via WhatsApp API
+        await sendWhatsAppMessage(message, recipientNumber);
+
+        // Ensure the recipient exists in Users collection
+        const recipientRef = db.collection('Users').doc(recipientNumber);
+        const recipientDoc = await recipientRef.get();
+        if (!recipientDoc.exists) {
+            await recipientRef.set({
+                user_id: recipientNumber,
+                name: 'Unknown User',
+                phone_number: recipientNumber,
+                is_active: true
+            });
+        }
+
+        // Get or create a conversation between agent and recipient
+        const agentId = process.env.BUSINESS_PHONE_NUMBER.replace(/\D/g, '');  // Your business's phone number
+        let conversationId = null;
+        const conversationsRef = db.collection('Conversations');
+        const conversationSnapshot = await conversationsRef
+            .where('participant_ids', 'array-contains', recipientNumber)
+            .where('status', '==', 'active')
+            .get();
+
+        let conversationExists = false;
+        conversationSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.participant_ids.includes(agentId)) {
+                conversationExists = true;
+                conversationId = doc.id;
+            }
+        });
+
+        if (!conversationExists) {
+            const newConversationRef = conversationsRef.doc();
+            await newConversationRef.set({
+                conversation_id: newConversationRef.id,
+                participant_ids: [agentId, recipientNumber],
+                status: 'active',
+                start_time: new Date(),
+                last_message: {
+                    message_id: null,
+                    content: message
+                }
+            });
+            conversationId = newConversationRef.id;
+        } else {
+            const conversationRef = conversationsRef.doc(conversationId);
+            await conversationRef.update({
+                last_message: {
+                    message_id: null,
+                    content: message
+                }
+            });
+        }
+
+        // Store the agent's message in Messages collection
+        const messageId = db.collection('Messages').doc().id;
+        await db.collection('Messages').doc(messageId).set({
+            message_id: messageId,
+            conversation_id: conversationId,
+            sender_id: agentId,
+            timestamp: new Date(),
+            content: message,
+            message_type: 'text',
+            is_read: false
+        });
+
+        console.log('Agent message stored in Firestore');
+
         res.status(200).json({ message: 'Message sent successfully' });
     } catch (error) {
         console.error('Error sending WhatsApp message:', error.response ? error.response.data : error.message);
@@ -196,6 +251,7 @@ app.post('/send-whatsapp-message', async (req, res) => {
     }
 });
 
+// Function to send message via WhatsApp API
 const sendWhatsAppMessage = (message, recipientNumber) => {
     const whatsappApiUrl = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`; 
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -219,52 +275,88 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
     });
 };
 
-// const sendWhatsAppMessage = (message, recipientNumber) => {
-//     const whatsappApiUrl = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`; 
-//     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-
-//     axios.post(whatsappApiUrl, {
-//         messaging_product: "whatsapp",
-//         to: recipientNumber, // The customer's phone number
-//         type: "text",
-//         text: { body: message }, // The message to be sent
-//     }, {
-//         headers: {
-//             Authorization: `Bearer ${accessToken}`, // WhatsApp access token
-//             'Content-Type': 'application/json'
-//         }
-//     }).then((response) => {
-//         console.log('Message sent to WhatsApp:', response.data);
-//     }).catch((error) => {
-//         console.error('Error sending WhatsApp message:', error.response ? error.response.data : error.message);
-//     });
-// };
-
-// Handle agent message, send to WhatsApp and Firestore
+// Socket.IO setup
 io.on('connection', (socket) => {
-    console.log('Agent connected');
+    console.log('Client connected');
 
-    socket.on('sendMessage', (data) => {
+    socket.on('sendMessage', async (data) => {
         const { message, to } = data;
 
-        // Send message to WhatsApp via WhatsApp API
-        sendWhatsAppMessage(message, to);
+        try {
+            // Send message via WhatsApp API
+            await sendWhatsAppMessage(message, to);
 
-        // Store agent's message in Firestore
-        db.collection('messages').add({
-            from: 'agent',
-            to,
-            message,
-            timestamp: new Date()
-        }).then(() => {
-            console.log('Message stored in Firestore');
-        }).catch(err => {
-            console.log('Error storing message:', err);
-        });
+            // Handle storing message and updating conversation
+            // (Same as in /send-whatsapp-message endpoint)
+            const agentId = process.env.BUSINESS_PHONE_NUMBER.replace(/\D/g, '');
+            let conversationId = null;
+            const conversationsRef = db.collection('Conversations');
+            const conversationSnapshot = await conversationsRef
+                .where('participant_ids', 'array-contains', to)
+                .where('status', '==', 'active')
+                .get();
+
+            let conversationExists = false;
+            conversationSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.participant_ids.includes(agentId)) {
+                    conversationExists = true;
+                    conversationId = doc.id;
+                }
+            });
+
+            if (!conversationExists) {
+                const newConversationRef = conversationsRef.doc();
+                await newConversationRef.set({
+                    conversation_id: newConversationRef.id,
+                    participant_ids: [agentId, to],
+                    status: 'active',
+                    start_time: new Date(),
+                    last_message: {
+                        message_id: null,
+                        content: message
+                    }
+                });
+                conversationId = newConversationRef.id;
+            } else {
+                const conversationRef = conversationsRef.doc(conversationId);
+                await conversationRef.update({
+                    last_message: {
+                        message_id: null,
+                        content: message
+                    }
+                });
+            }
+
+            // Store the agent's message in Messages collection
+            const messageId = db.collection('Messages').doc().id;
+            await db.collection('Messages').doc(messageId).set({
+                message_id: messageId,
+                conversation_id: conversationId,
+                sender_id: agentId,
+                timestamp: new Date(),
+                content: message,
+                message_type: 'text',
+                is_read: false
+            });
+
+            console.log('Agent message stored in Firestore');
+
+            // Emit the message to connected clients
+            io.emit('newMessage', {
+                conversation_id: conversationId,
+                sender_id: agentId,
+                content: message,
+                timestamp: new Date()
+            });
+
+        } catch (error) {
+            console.error('Error sending message:', error.message);
+        }
     });
 
     socket.on('disconnect', () => {
-        console.log('Agent disconnected');
+        console.log('Client disconnected');
     });
 });
 
