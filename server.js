@@ -266,7 +266,7 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
         }
     }, {
         headers: {
-            Authorization: `Bearer EAAHikUfOVZBsBO3wOasYP9V6zRkzZB03epjVJVrxUWUESeoI1kDhaHRVFVTdxGv6HaCE2OXuU1Ox7hlE04u6JV5lgSDXBUZBPp2iGTPXo3HVG0IW9QAFVqWoMBUZANKczKdZCjkCdJyMkMNnhc04vHWtA1cdMQhyc2pibBn5xqCv5i0k1WIMy4qYUQGoPfPPZCuJDHZAvqQqqD9gow6m4rNImN1fWlEkrC6DjIZD`,
+            Authorization: `Bearer EAAHikUfOVZBsBO16eugBAzpVNjw3aesZBzsRFPfh8kj0r9Gi9A92s94uDnyT7k5cDLo7atzZBwKnXmXeZCZAC4tDIWFNQzJHvpixYDC9A3oZBrKYSW36s10Q3qyOJfR87sAz246mZAWcjpK945q6YTdPiH0RaKdCrnMvnnUBKBNeCkscIMy1yhm59b6nyKwkZBTvZAsf7MDnhfckhxeLouKzTlTZBIRzPgIPWwOcYZD`,
             'Content-Type': 'application/json'
         }
     }).then((response) => {
