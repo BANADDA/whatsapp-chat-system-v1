@@ -255,7 +255,7 @@ app.post('/send-whatsapp-message', async (req, res) => {
 // Function to send message via WhatsApp API
 const sendWhatsAppMessage = (message, recipientNumber) => {
     const whatsappApiUrl = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`; 
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+    // const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
     axios.post(whatsappApiUrl, {
         messaging_product: "whatsapp",
@@ -266,7 +266,7 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
         }
     }, {
         headers: {
-            Authorization: `Bearer EAAHikUfOVZBsBO5MZBDsE2h81zd6IBBB9bGS1g8gdVgjNg2CUEUZBmIsfS7GW8MvzkYmRmpXMgFTP48a9gnPrnci9nYZBCO4WZBZC9tnr3Jp5dCCKBR6n2XB1RVBX5c3eyYNulnBMUkOmVo5W1LJ4LGZA5xUkJ58jZA74fdLtlHiubgIQuIm3JoTEo8sBbsBaZBO67YwN2nIfXsx2fX6ujr8llm9BXvEdZCQvVmtZBK`,
+            Authorization: `Bearer EAAHikUfOVZBsBO3wOasYP9V6zRkzZB03epjVJVrxUWUESeoI1kDhaHRVFVTdxGv6HaCE2OXuU1Ox7hlE04u6JV5lgSDXBUZBPp2iGTPXo3HVG0IW9QAFVqWoMBUZANKczKdZCjkCdJyMkMNnhc04vHWtA1cdMQhyc2pibBn5xqCv5i0k1WIMy4qYUQGoPfPPZCuJDHZAvqQqqD9gow6m4rNImN1fWlEkrC6DjIZD`,
             'Content-Type': 'application/json'
         }
     }).then((response) => {
