@@ -87,7 +87,7 @@ app.post('/webhook', async (req, res) => {
             const recipientRef = db.collection('Users').doc(recipientId);
             await recipientRef.set({
                 user_id: recipientId,
-                name: 'Your Business Name',
+                name: 'Fibre Wire',
                 phone_number: recipientId,
                 is_active: true
             }, { merge: true });
@@ -190,7 +190,8 @@ app.post('/send-whatsapp-message', async (req, res) => {
         }
 
         // Get or create a conversation between agent and recipient
-        const agentId = process.env.BUSINESS_PHONE_NUMBER.replace(/\D/g, '');  // Your business's phone number
+        // const agentId = process.env.BUSINESS_PHONE_NUMBER.replace(/\D/g, '');  // Your business's phone number
+        const agentId = process.env.BUSINESS_PHONE_NUMBER;
         let conversationId = null;
         const conversationsRef = db.collection('Conversations');
         const conversationSnapshot = await conversationsRef
@@ -265,7 +266,7 @@ const sendWhatsAppMessage = (message, recipientNumber) => {
         }
     }, {
         headers: {
-            Authorization: `Bearer EAAHikUfOVZBsBO6cBjDNZCleLbHvgao7BYkZAh8KWhL1kXdEx0DoMWgSZBbVg9NBWZAv3ZAm5wbZBdnZAg6d8G20gawAklZCz96AbSz4PmhZB817aLfbBh3PrHwA0s8FxoZADcGG0AlIjZC6vstNkzAtErGViocGCib4a6gtgiSwu0fWV2ttc4anjzDkE6oMZBp8be5O7yKMRciTkRnrhxcrgaby9vvLbOtdgv0OStOIZD`,
+            Authorization: `Bearer EAAHikUfOVZBsBO5MZBDsE2h81zd6IBBB9bGS1g8gdVgjNg2CUEUZBmIsfS7GW8MvzkYmRmpXMgFTP48a9gnPrnci9nYZBCO4WZBZC9tnr3Jp5dCCKBR6n2XB1RVBX5c3eyYNulnBMUkOmVo5W1LJ4LGZA5xUkJ58jZA74fdLtlHiubgIQuIm3JoTEo8sBbsBaZBO67YwN2nIfXsx2fX6ujr8llm9BXvEdZCQvVmtZBK`,
             'Content-Type': 'application/json'
         }
     }).then((response) => {
